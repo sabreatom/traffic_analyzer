@@ -40,6 +40,7 @@ typedef struct {
 	uint32_t ip_prot;
 	uint32_t port_dst;
 	uint32_t port_src;
+	uint32_t l2_size;
 } pckt_hdr_data_t; 
 pckt_hdr_data_t pckt_hdr_data;
  
@@ -74,12 +75,12 @@ static void db_write_pckt_data()
 	char *sql = sqlite3_mprintf(
 						"INSERT INTO packets_%d (MAC_DST,MAC_SRC,"	\
 						"ETH_PROT,IP_ADDR_DST,IP_ADDR_SRC,IP_PROT,"		\
-						"PORT_DST,PORT_SRC,TIMESTAMP) VALUES ("	\
-						"%Q,%Q,%d,%Q,%Q,%d,%d,%d,%d);", unix_timestamp, pckt_hdr_data.mac_dst, \
+						"PORT_DST,PORT_SRC,L2_SIZE,TIMESTAMP) VALUES ("	\
+						"%Q,%Q,%d,%Q,%Q,%d,%d,%d,%d,%d);", unix_timestamp, pckt_hdr_data.mac_dst, \
 						pckt_hdr_data.mac_src, pckt_hdr_data.eth_prot, \
 						pckt_hdr_data.ip_dst, pckt_hdr_data.ip_src, \
 						pckt_hdr_data.ip_prot, pckt_hdr_data.port_dst, \
-						pckt_hdr_data.port_src, timestamp);
+						pckt_hdr_data.port_src, pckt_hdr_data.l2_size,timestamp);
 	
 	rc = sqlite3_exec(db, sql, callback, 0, &zErrMsg);
 	if( rc != SQLITE_OK ){
@@ -131,6 +132,7 @@ int main()
 					 "IP_PROT        	INT," \
 					 "PORT_DST        	INT," \
 					 "PORT_SRC        	INT," \
+					 "L2_SIZE        	INT," \
 					 "TIMESTAMP         INT);", unix_timestamp);
          
 	rc = sqlite3_exec(db, sql, callback, 0, &zErrMsg);
@@ -227,12 +229,15 @@ void print_ethernet_header(unsigned char* Buffer, int Size)
     fprintf(logfile , "   |-Destination Address : %.2X-%.2X-%.2X-%.2X-%.2X-%.2X \n", eth->h_dest[0] , eth->h_dest[1] , eth->h_dest[2] , eth->h_dest[3] , eth->h_dest[4] , eth->h_dest[5] );
     fprintf(logfile , "   |-Source Address      : %.2X-%.2X-%.2X-%.2X-%.2X-%.2X \n", eth->h_source[0] , eth->h_source[1] , eth->h_source[2] , eth->h_source[3] , eth->h_source[4] , eth->h_source[5] );
     fprintf(logfile , "   |-Protocol            : %u \n",(unsigned short)eth->h_proto);
+    
     sprintf(tmp_buf, "%.2X-%.2X-%.2X-%.2X-%.2X-%.2X", eth->h_dest[0] , eth->h_dest[1] , eth->h_dest[2] , eth->h_dest[3] , eth->h_dest[4] , eth->h_dest[5]);
     memcpy(pckt_hdr_data.mac_dst,tmp_buf,20);
+    
     memset(tmp_buf,0,20);
     sprintf(tmp_buf, "%.2X-%.2X-%.2X-%.2X-%.2X-%.2X", eth->h_source[0] , eth->h_source[1] , eth->h_source[2] , eth->h_source[3] , eth->h_source[4] , eth->h_source[5]);
     memcpy(pckt_hdr_data.mac_src,tmp_buf,20);
     pckt_hdr_data.eth_prot = eth->h_proto;
+    pckt_hdr_data.l2_size = Size;
 }
  
 void print_ip_header(unsigned char* Buffer, int Size)
@@ -266,8 +271,10 @@ void print_ip_header(unsigned char* Buffer, int Size)
     fprintf(logfile , "   |-Checksum : %d\n",ntohs(iph->check));
     fprintf(logfile , "   |-Source IP        : %s\n",inet_ntoa(source.sin_addr));
     fprintf(logfile , "   |-Destination IP   : %s\n",inet_ntoa(dest.sin_addr));
+    
     sprintf(tmp_buf, "%s", inet_ntoa(source.sin_addr));
     memcpy(pckt_hdr_data.ip_src,tmp_buf,20);
+    
     memset(tmp_buf,0,20);
     sprintf(tmp_buf, "%s", inet_ntoa(dest.sin_addr));
     memcpy(pckt_hdr_data.ip_dst,tmp_buf,20);
