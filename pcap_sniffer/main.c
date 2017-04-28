@@ -140,7 +140,18 @@ void process_packet(u_char *args, const struct pcap_pkthdr *header, const u_char
     }
     printf("TCP : %d   UDP : %d   ICMP : %d   IGMP : %d   Others : %d   Total : %d\r", tcp , udp , icmp , igmp , others , total);
     
-    db_insert_pckt_data(packet_header);
+    //db_insert_pckt_data(packet_header);
+    
+    //Check transaction buffer:
+    if (db_get_transaction_buf_entry_count() == (TRANSACTION_BUF_SIZE - 1)){
+		db_write_transaction_buf(packet_header);
+		db_insert_pckt_data_trans();
+		db_clear_transaction_buf();
+	}
+	else{
+		db_write_transaction_buf(packet_header);
+	}
+    
     clr_pckt_hdr_data(&packet_header);
 }
  

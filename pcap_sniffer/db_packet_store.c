@@ -12,6 +12,10 @@ static int rc;
 static char *zErrMsg = 0;
 static time_t unix_timestamp;
 
+//Transaction buffer:
+static pckt_hdr_data_t transaction_buf[TRANSACTION_BUF_SIZE];
+static int transaction_entry_count = 0;
+
 static int callback(void *NotUsed, int argc, char **argv, char **azColName)
 {
    int i;
@@ -97,5 +101,58 @@ int db_insert_pckt_data(pckt_hdr_data_t header_data)
 	}
 	
 	sqlite3_free(sql);
+	return 0;
+}
+
+//Get number of entries in transaction buffer:
+int db_get_transaction_buf_entry_count(void)
+{
+	return transaction_entry_count;
+}
+
+//Clear transaction buffer:
+void db_clear_transaction_buf(void)
+{
+	transaction_entry_count = 0;
+}
+
+//Write entry to transaction buffer:
+void db_write_transaction_buf(pckt_hdr_data_t header_data)
+{
+	memcpy(transaction_buf + transaction_entry_count, &header_data, sizeof(pckt_hdr_data_t));
+	transaction_entry_count++;
+}
+
+//Insert into DB using transaction:
+int db_insert_pckt_data_trans(void)
+{
+	int i;
+	
+	sqlite3_exec(db, "BEGIN TRANSACTION;", NULL, NULL, NULL);
+	
+	for (i = 0; i < TRANSACTION_BUF_SIZE; i++){
+		char *sql = sqlite3_mprintf(
+						"INSERT INTO packets_%d (MAC_DST,MAC_SRC,"	\
+						"ETH_PROT,IP_ADDR_DST,IP_ADDR_SRC,IP_PROT,"		\
+						"PORT_DST,PORT_SRC,L2_SIZE,TIMESTAMP) VALUES ("	\
+						"%Q,%Q,%d,%Q,%Q,%d,%d,%d,%d,%d);", unix_timestamp, transaction_buf[i].mac_dst, \
+						transaction_buf[i].mac_src, transaction_buf[i].eth_prot, \
+						transaction_buf[i].ip_dst, transaction_buf[i].ip_src, \
+						transaction_buf[i].ip_prot, transaction_buf[i].port_dst, \
+						transaction_buf[i].port_src, transaction_buf[i].l2_size, time(NULL));
+	
+		rc = sqlite3_exec(db, sql, callback, 0, &zErrMsg);
+		if( rc != SQLITE_OK ){
+			fprintf(stderr, "SQL error: %s\n", zErrMsg);
+			sqlite3_free(zErrMsg);
+			sqlite3_exec(db, "END TRANSACTION;", NULL, NULL, NULL);
+			return 1;
+		}
+		
+		sqlite3_free(sql);
+	}
+	
+	sqlite3_exec(db, "END TRANSACTION;", NULL, NULL, NULL);
+	
 	return 0;
 }
